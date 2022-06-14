@@ -6,6 +6,7 @@ for Rust libraries in [RFC #1105](https://github.com/rust-lang/rfcs/blob/master/
 
 ## Unreleased
 
+- quick fix to handle DB columns of name "type" (which diesel names as type_)
 - update heck dependency to 0.4
 
 Add support for tables with no primary key (e.g. a joined PK between columns)
