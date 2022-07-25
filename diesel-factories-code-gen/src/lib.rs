@@ -268,7 +268,7 @@ impl Input {
                 type Id = #id_type;
                 type Connection = #connection_type;
 
-                fn insert(self, con: &Self::Connection) -> Self::Model {
+                fn insert(self, con: &mut Self::Connection) -> Self::Model {
                     use diesel::prelude::*;
                     #insert_code
                 }

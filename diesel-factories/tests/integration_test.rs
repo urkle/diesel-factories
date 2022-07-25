@@ -157,61 +157,61 @@ impl<'b> Default for VisitedCityFactory<'b> {
 
 #[test]
 fn insert_one_user() {
-    let con = setup();
+    let mut con = setup();
 
-    let user = UserFactory::default().name("Alice").insert(&con);
+    let user = UserFactory::default().name("Alice").insert(&mut con);
 
     assert_eq!(user.name, "Alice");
     assert_eq!(user.age, 30);
-    assert_eq!(1, count_users(&con));
-    assert_eq!(0, count_countries(&con));
+    assert_eq!(1, count_users(&mut con));
+    assert_eq!(0, count_countries(&mut con));
 }
 
 #[test]
 fn overriding_country() {
-    let con = setup();
+    let mut con = setup();
 
     let bob = UserFactory::default()
         .country(Some(CountryFactory::default().name("USA")))
-        .insert(&con);
+        .insert(&mut con);
 
-    let country = find_country_by_id(bob.country_id.unwrap(), &con);
+    let country = find_country_by_id(bob.country_id.unwrap(), &mut con);
 
     assert_eq!("USA", country.name);
-    assert_eq!(1, count_users(&con));
-    assert_eq!(1, count_countries(&con));
+    assert_eq!(1, count_users(&mut con));
+    assert_eq!(1, count_countries(&mut con));
 }
 
 #[test]
 fn insert_two_users_sharing_country() {
-    let con = setup();
+    let mut con = setup();
 
-    let country = CountryFactory::default().insert(&con);
-    let bob = UserFactory::default().country(Some(&country)).insert(&con);
-    let alice = UserFactory::default().country(Some(&country)).insert(&con);
+    let country = CountryFactory::default().insert(&mut con);
+    let bob = UserFactory::default().country(Some(&country)).insert(&mut con);
+    let alice = UserFactory::default().country(Some(&country)).insert(&mut con);
 
     assert_eq!(bob.country_id, alice.country_id);
-    assert_eq!(2, count_users(&con));
-    assert_eq!(1, count_countries(&con));
+    assert_eq!(2, count_users(&mut con));
+    assert_eq!(1, count_countries(&mut con));
 }
 
 #[test]
 fn insert_visited_cities() {
-    let con = setup();
+    let mut con = setup();
 
-    let country = CountryFactory::default().insert(&con);
-    let user = UserFactory::default().country(Some(&country)).insert(&con);
-    let city_one = CityFactory::default().country(&country).insert(&con);
-    let city_two = CityFactory::default().country(&country).insert(&con);
+    let country = CountryFactory::default().insert(&mut con);
+    let user = UserFactory::default().country(Some(&country)).insert(&mut con);
+    let city_one = CityFactory::default().country(&country).insert(&mut con);
+    let city_two = CityFactory::default().country(&country).insert(&mut con);
 
-    let visited_city_one = VisitedCityFactory::default().city(&city_one).user(&user).insert(&con);
-    let visited_city_two = VisitedCityFactory::default().city(&city_two).user(&user).insert(&con);
+    let visited_city_one = VisitedCityFactory::default().city(&city_one).user(&user).insert(&mut con);
+    let visited_city_two = VisitedCityFactory::default().city(&city_two).user(&user).insert(&mut con);
 
     assert_eq!(user.country_id, Some(country.identity));
-    assert_eq!(1, count_users(&con));
-    assert_eq!(1, count_countries(&con));
-    assert_eq!(2, count_cities(&con));
-    assert_eq!(2, count_visited_cities(&con));
+    assert_eq!(1, count_users(&mut con));
+    assert_eq!(1, count_countries(&mut con));
+    assert_eq!(2, count_cities(&mut con));
+    assert_eq!(2, count_visited_cities(&mut con));
     assert_eq!(visited_city_one.user_id, user.id);
     assert_eq!(visited_city_one.city_id, city_one.id);
     assert_eq!(visited_city_two.user_id, user.id);
@@ -220,14 +220,14 @@ fn insert_visited_cities() {
 
 #[test]
 fn visited_cities_build_whole_tree() {
-    let con = setup();
+    let mut con = setup();
 
-    VisitedCityFactory::default().insert(&con);
+    VisitedCityFactory::default().insert(&mut con);
 
-    assert_eq!(1, count_users(&con));
-    assert_eq!(1, count_countries(&con));
-    assert_eq!(1, count_cities(&con));
-    assert_eq!(1, count_visited_cities(&con));
+    assert_eq!(1, count_users(&mut con));
+    assert_eq!(1, count_countries(&mut con));
+    assert_eq!(1, count_cities(&mut con));
+    assert_eq!(1, count_visited_cities(&mut con));
 }
 
 fn setup() -> PgConnection {
@@ -247,36 +247,36 @@ fn setup() -> PgConnection {
         host = pg_host,
         port = pg_port
     );
-    let con = PgConnection::establish(&database_url).unwrap();
+    let mut con = PgConnection::establish(&database_url).unwrap();
     con.begin_test_transaction().unwrap();
     con
 }
 
-fn count_users(con: &PgConnection) -> i64 {
+fn count_users(con: &mut PgConnection) -> i64 {
     use crate::schema::users;
     use diesel::dsl::count_star;
     users::table.select(count_star()).first(con).unwrap()
 }
 
-fn count_countries(con: &PgConnection) -> i64 {
+fn count_countries(con: &mut PgConnection) -> i64 {
     use crate::schema::countries;
     use diesel::dsl::count_star;
     countries::table.select(count_star()).first(con).unwrap()
 }
 
-fn count_cities(con: &PgConnection) -> i64 {
+fn count_cities(con: &mut PgConnection) -> i64 {
     use crate::schema::cities;
     use diesel::dsl::count_star;
     cities::table.select(count_star()).first(con).unwrap()
 }
 
-fn count_visited_cities(con: &PgConnection) -> i64 {
+fn count_visited_cities(con: &mut PgConnection) -> i64 {
     use crate::schema::visited_cities;
     use diesel::dsl::count_star;
     visited_cities::table.select(count_star()).first(con).unwrap()
 }
 
-fn find_country_by_id(input: i32, con: &PgConnection) -> Country {
+fn find_country_by_id(input: i32, con: &mut PgConnection) -> Country {
     use crate::schema::countries::dsl::*;
     countries
         .filter(identity.eq(&input))
