@@ -1,9 +1,7 @@
 //! See the docs for "diesel-factories" for more info about this.
 
-#![deny(mutable_borrow_reservation_conflict)]
 #![recursion_limit = "128"]
 #![deny(
-    mutable_borrow_reservation_conflict,
     missing_debug_implementations,
     missing_copy_implementations,
     trivial_casts,
@@ -371,6 +369,7 @@ impl Input {
 
 #[derive(Debug)]
 struct AssociationType {
+    #[allow(dead_code)]
     span: Span,
     lifetime: Lifetime,
     model_type: Type,
