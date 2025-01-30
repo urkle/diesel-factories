@@ -426,6 +426,9 @@
     unused_qualifications
 )]
 
+#[cfg(all(not(feature = "sync"), not(feature = "async")))]
+compile_error!("Must enable sync of async features");
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use diesel_factories_code_gen::Factory;
@@ -481,6 +484,7 @@ impl<'a, Model, Factory> Association<'a, Model, Factory> {
     }
 }
 
+#[cfg(feature = "sync")]
 impl<M, F> Association<'_, M, F>
 where
     F: Factory<Model = M> + Clone,
@@ -491,6 +495,26 @@ where
             Association::Model(model) => F::id_for_model(&model).clone(),
             Association::Factory(factory) => {
                 let model = factory.clone().insert(con);
+                F::id_for_model(&model).clone()
+            }
+        }
+    }
+}
+
+#[cfg(feature = "async")]
+impl<M, F> Association<'_, M, F>
+where
+    F: Factory<Model = M> + Clone + Send,
+{
+    #[doc(hidden)]
+    pub async fn async_insert_returning_id(&self, con: &mut F::AsyncConnection) -> F::Id
+    where
+        F::AsyncConnection: Send,
+    {
+        match self {
+            Association::Model(model) => F::id_for_model(&model).clone(),
+            Association::Factory(factory) => {
+                let model = factory.clone().async_insert(con).await;
                 F::id_for_model(&model).clone()
             }
         }
@@ -515,13 +539,41 @@ pub trait Factory: Clone {
     type Id: Clone;
 
     /// The database connection type you use such as `diesel::pg::PgConnection`.
+    #[cfg(feature = "sync")]
     type Connection;
+
+    /// The database connection type you use such as `diesel_async::AsyncPgConnection`.
+    #[cfg(feature = "async")]
+    type AsyncConnection;
 
     /// Insert the factory into the database.
     ///
     /// # Panics
     /// This will panic if the insert fails. Should be fine since you want panics early in tests.
+    #[cfg(feature = "sync")]
     fn insert(self, con: &mut Self::Connection) -> Self::Model;
+
+    /// Insert the factory into the database via an async database connection
+    ///
+    /// # Panics
+    /// This will panic if the insert fails. Should be fine since you want panics early in tests.
+    #[cfg(all(feature = "async", not(feature = "sync")))]
+    fn insert(
+        self,
+        con: &mut Self::AsyncConnection,
+    ) -> impl std::future::Future<Output = Self::Model> + Send {
+        self.async_insert(con)
+    }
+
+    /// Insert the factory into the database via an async database connection
+    ///
+    /// # Panics
+    /// This will panic if the insert fails. Should be fine since you want panics early in tests.
+    #[cfg(feature = "async")]
+    fn async_insert(
+        self,
+        con: &mut Self::AsyncConnection,
+    ) -> impl std::future::Future<Output = Self::Model> + Send;
 
     /// Get the primary key value for a model type.
     ///

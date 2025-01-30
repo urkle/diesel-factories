@@ -11,6 +11,10 @@ readme = "README.md"
 repository = "https://github.com/davidpdrsn/diesel-factories.git"
 version = "2.0.0"
 
+[features]
+sync = []
+async = []
+
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
