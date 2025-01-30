@@ -5,6 +5,7 @@
 extern crate diesel;
 
 use diesel::prelude::*;
+use diesel_async::{AsyncConnection, AsyncPgConnection, RunQueryDsl};
 use diesel_factories::{Association, Factory};
 use std::env;
 
@@ -80,7 +81,7 @@ struct VisitedCity {
 #[factory(
     model = User,
     table = crate::schema::users,
-    connection = diesel::pg::PgConnection
+    async_connection = diesel_async::AsyncPgConnection
 )]
 struct UserFactory<'a> {
     pub name: &'a str,
@@ -156,94 +157,109 @@ impl<'b> Default for VisitedCityFactory<'b> {
     }
 }
 
-#[test]
-fn insert_one_user() {
-    let mut con = setup();
+#[tokio::test]
+async fn insert_one_user() {
+    let mut con = setup().await;
 
-    let user = UserFactory::default().name("Alice").insert(&mut con);
+    let user = UserFactory::default()
+        .name("Alice")
+        .async_insert(&mut con)
+        .await;
 
     assert_eq!(user.name, "Alice");
     assert_eq!(user.age, 30);
-    assert_eq!(1, count_users(&mut con));
-    assert_eq!(0, count_countries(&mut con));
+    assert_eq!(1, count_users(&mut con).await);
+    assert_eq!(0, count_countries(&mut con).await);
 }
 
-#[test]
-fn overriding_country() {
-    let mut con = setup();
+#[tokio::test]
+async fn overriding_country() {
+    let mut con = setup().await;
 
     let bob = UserFactory::default()
         .country(Some(CountryFactory::default().name("USA")))
-        .insert(&mut con);
+        .async_insert(&mut con)
+        .await;
 
-    let country = find_country_by_id(bob.country_id.unwrap(), &mut con);
+    let country = find_country_by_id(bob.country_id.unwrap(), &mut con).await;
 
     assert_eq!("USA", country.name);
-    assert_eq!(1, count_users(&mut con));
-    assert_eq!(1, count_countries(&mut con));
+    assert_eq!(1, count_users(&mut con).await);
+    assert_eq!(1, count_countries(&mut con).await);
 }
 
-#[test]
-fn insert_two_users_sharing_country() {
-    let mut con = setup();
+#[tokio::test]
+async fn insert_two_users_sharing_country() {
+    let mut con = setup().await;
 
-    let country = CountryFactory::default().insert(&mut con);
+    let country = CountryFactory::default().async_insert(&mut con).await;
     let bob = UserFactory::default()
         .country(Some(&country))
-        .insert(&mut con);
+        .async_insert(&mut con)
+        .await;
     let alice = UserFactory::default()
         .country(Some(&country))
-        .insert(&mut con);
+        .async_insert(&mut con)
+        .await;
 
     assert_eq!(bob.country_id, alice.country_id);
-    assert_eq!(2, count_users(&mut con));
-    assert_eq!(1, count_countries(&mut con));
+    assert_eq!(2, count_users(&mut con).await);
+    assert_eq!(1, count_countries(&mut con).await);
 }
 
-#[test]
-fn insert_visited_cities() {
-    let mut con = setup();
+#[tokio::test]
+async fn insert_visited_cities() {
+    let mut con = setup().await;
 
-    let country = CountryFactory::default().insert(&mut con);
+    let country = CountryFactory::default().async_insert(&mut con).await;
     let user = UserFactory::default()
         .country(Some(&country))
-        .insert(&mut con);
-    let city_one = CityFactory::default().country(&country).insert(&mut con);
-    let city_two = CityFactory::default().country(&country).insert(&mut con);
+        .async_insert(&mut con)
+        .await;
+    let city_one = CityFactory::default()
+        .country(&country)
+        .async_insert(&mut con)
+        .await;
+    let city_two = CityFactory::default()
+        .country(&country)
+        .async_insert(&mut con)
+        .await;
 
     let visited_city_one = VisitedCityFactory::default()
         .city(&city_one)
         .user(&user)
-        .insert(&mut con);
+        .async_insert(&mut con)
+        .await;
     let visited_city_two = VisitedCityFactory::default()
         .city(&city_two)
         .user(&user)
-        .insert(&mut con);
+        .async_insert(&mut con)
+        .await;
 
     assert_eq!(user.country_id, Some(country.identity));
-    assert_eq!(1, count_users(&mut con));
-    assert_eq!(1, count_countries(&mut con));
-    assert_eq!(2, count_cities(&mut con));
-    assert_eq!(2, count_visited_cities(&mut con));
+    assert_eq!(1, count_users(&mut con).await);
+    assert_eq!(1, count_countries(&mut con).await);
+    assert_eq!(2, count_cities(&mut con).await);
+    assert_eq!(2, count_visited_cities(&mut con).await);
     assert_eq!(visited_city_one.user_id, user.id);
     assert_eq!(visited_city_one.city_id, city_one.id);
     assert_eq!(visited_city_two.user_id, user.id);
     assert_eq!(visited_city_two.city_id, city_two.id);
 }
 
-#[test]
-fn visited_cities_build_whole_tree() {
-    let mut con = setup();
+#[tokio::test]
+async fn visited_cities_build_whole_tree() {
+    let mut con = setup().await;
 
-    VisitedCityFactory::default().insert(&mut con);
+    VisitedCityFactory::default().async_insert(&mut con).await;
 
-    assert_eq!(1, count_users(&mut con));
-    assert_eq!(1, count_countries(&mut con));
-    assert_eq!(1, count_cities(&mut con));
-    assert_eq!(1, count_visited_cities(&mut con));
+    assert_eq!(1, count_users(&mut con).await);
+    assert_eq!(1, count_countries(&mut con).await);
+    assert_eq!(1, count_cities(&mut con).await);
+    assert_eq!(1, count_visited_cities(&mut con).await);
 }
 
-fn setup() -> PgConnection {
+async fn setup() -> AsyncPgConnection {
     let pg_host = env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string());
     let pg_port = env::var("POSTGRES_PORT").unwrap_or_else(|_| "5432".to_string());
     let pg_password = env::var("POSTGRES_PASSWORD").ok();
@@ -260,42 +276,48 @@ fn setup() -> PgConnection {
         host = pg_host,
         port = pg_port
     );
-    let mut con = PgConnection::establish(&database_url).unwrap();
-    con.begin_test_transaction().unwrap();
+    let mut con = AsyncPgConnection::establish(&database_url).await.unwrap();
+    con.begin_test_transaction().await.unwrap();
     con
 }
 
-fn count_users(con: &mut PgConnection) -> i64 {
+async fn count_users(con: &mut AsyncPgConnection) -> i64 {
     use crate::schema::users;
     use diesel::dsl::count_star;
-    users::table.select(count_star()).first(con).unwrap()
+    users::table.select(count_star()).first(con).await.unwrap()
 }
 
-fn count_countries(con: &mut PgConnection) -> i64 {
+async fn count_countries(con: &mut AsyncPgConnection) -> i64 {
     use crate::schema::countries;
     use diesel::dsl::count_star;
-    countries::table.select(count_star()).first(con).unwrap()
+    countries::table
+        .select(count_star())
+        .first(con)
+        .await
+        .unwrap()
 }
 
-fn count_cities(con: &mut PgConnection) -> i64 {
+async fn count_cities(con: &mut AsyncPgConnection) -> i64 {
     use crate::schema::cities;
     use diesel::dsl::count_star;
-    cities::table.select(count_star()).first(con).unwrap()
+    cities::table.select(count_star()).first(con).await.unwrap()
 }
 
-fn count_visited_cities(con: &mut PgConnection) -> i64 {
+async fn count_visited_cities(con: &mut AsyncPgConnection) -> i64 {
     use crate::schema::visited_cities;
     use diesel::dsl::count_star;
     visited_cities::table
         .select(count_star())
         .first(con)
+        .await
         .unwrap()
 }
 
-fn find_country_by_id(input: i32, con: &mut PgConnection) -> Country {
+async fn find_country_by_id(input: i32, con: &mut AsyncPgConnection) -> Country {
     use crate::schema::countries::dsl::*;
     countries
         .filter(identity.eq(&input))
         .first::<Country>(con)
+        .await
         .unwrap()
 }

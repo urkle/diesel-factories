@@ -12,6 +12,9 @@
     unused_qualifications
 )]
 
+#[cfg(all(not(feature = "sync"), not(feature = "async")))]
+compile_error!("Must enable sync of async features");
+
 use heck::ToUpperCamelCase;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -39,7 +42,10 @@ mod struct_attr {
     pub struct Factory {
         pub model: Type,
         pub table: Path,
+        #[cfg(feature = "sync")]
         pub connection: Option<Type>,
+        #[cfg(feature = "async")]
+        pub async_connection: Option<Type>,
         pub id: Option<Type>,
         pub id_name: Option<Ident>,
         pub no_id: Option<()>,
@@ -62,6 +68,7 @@ mod field_attr {
 
     #[derive(Debug, FromAttributes)]
     pub struct Factory {
+        #[allow(dead_code)]
         pub foreign_key_name: Ident,
     }
 }
@@ -70,7 +77,10 @@ mod field_attr {
 struct Input {
     model: Type,
     table: Path,
+    #[cfg(feature = "sync")]
     connection: Type,
+    #[cfg(feature = "async")]
+    async_connection: Type,
     id_type: Type,
     id_name: Ident,
     no_id: Option<()>,
@@ -96,14 +106,21 @@ impl Parse for Input {
         let struct_attr::Factory {
             model,
             table,
+            #[cfg(feature = "sync")]
             connection,
+            #[cfg(feature = "async")]
+            async_connection,
             id,
             id_name,
             no_id,
         } = struct_attr::Factory::from_attributes(&attrs)?;
 
+        #[cfg(feature = "sync")]
         let connection =
             connection.unwrap_or_else(|| syn::parse2(quote! { diesel::pg::PgConnection }).unwrap());
+        #[cfg(feature = "async")]
+        let async_connection = async_connection
+            .unwrap_or_else(|| syn::parse2(quote! { diesel_async::AsyncPgConnection }).unwrap());
         let id_type = id.unwrap_or_else(|| syn::parse2(quote! { i32 }).unwrap());
         let id_name = id_name.unwrap_or_else(|| syn::parse2(quote! { id }).unwrap());
 
@@ -120,12 +137,13 @@ impl Parse for Input {
             let field_ty = field.ty.clone();
 
             if let Ok(association_type) = AssociationType::new(field_ty) {
-                let foreign_key_name =
-                    if let Some(attr) = assoc_field_attr::Factory::try_from_attributes(&field.attrs)? {
-                        attr.foreign_key_name
-                    } else {
-                        format_ident!("{}_{}", name, id_name)
-                    };
+                let foreign_key_name = if let Some(attr) =
+                    assoc_field_attr::Factory::try_from_attributes(&field.attrs)?
+                {
+                    attr.foreign_key_name
+                } else {
+                    format_ident!("{}_{}", name, id_name)
+                };
 
                 associations.push((name, association_type, foreign_key_name));
             } else {
@@ -169,7 +187,10 @@ impl Parse for Input {
         Ok(Input {
             model,
             table,
+            #[cfg(feature = "sync")]
             connection,
+            #[cfg(feature = "async")]
+            async_connection,
             id_type,
             id_name,
             no_id,
@@ -195,56 +216,11 @@ impl Input {
         let lifetime = &self.lifetime;
         let model_type = &self.model;
         let id_type = &self.id_type;
+        #[cfg(feature = "sync")]
         let connection_type = &self.connection;
-        let table_path = &self.table;
+        #[cfg(feature = "async")]
+        let async_connection_type = &self.async_connection;
         let id_name = &self.id_name;
-
-        let ident_type : Ident = syn::parse_str("r#type").unwrap();
-        let ident_type_ : Ident = syn::parse_str("type_").unwrap();
-
-        let insert_code = if self.no_fields() {
-            quote! {
-                diesel::insert_into(#table_path::table)
-                    .default_values()
-                    .get_result::<Self::Model>(con)
-                    .expect("Insert of factory failed")
-            }
-        } else {
-            let values = self.fields.iter().map(|(name, _)| {
-                let field_name = if name == &ident_type {
-                    &ident_type_
-                } else {
-                    name
-                };
-                quote! { #table_path::#field_name.eq(&self.#name) }
-            });
-            let values = values.chain(self.associations.iter().map(
-                |(name, association_type, foreign_key_field)| {
-                    if association_type.is_optional {
-                        quote! {
-                            {
-                                let value = self.#name.map(|inner| {
-                                    inner.insert_returning_id(con)
-                                });
-                                #table_path::#foreign_key_field.eq(value)
-                            }
-                        }
-                    } else {
-                        quote! {
-                            #table_path::#foreign_key_field.eq(self.#name.insert_returning_id(con))
-                        }
-                    }
-                },
-            ));
-
-            quote! {
-                let values = ( #(#values),* );
-                diesel::insert_into(#table_path::table)
-                    .values(values)
-                    .get_result::<Self::Model>(con)
-                    .expect("Insert of factory failed")
-            }
-        };
 
         let id_for_model_method = if self.no_id.is_some() {
             quote! {
@@ -260,18 +236,122 @@ impl Input {
             }
         };
 
-        quote! {
-            impl <#lifetime> diesel_factories::Factory for #factory <#lifetime> {
-                type Model = #model_type;
-                type Id = #id_type;
+        #[allow(unused_assignments, unused_mut)]
+        let mut sync_impl: Option<TokenStream> = None;
+        #[cfg(feature = "sync")]
+        {
+            let insert_code = self.gen_insert_code(&self.table, false);
+
+            sync_impl = quote! {
                 type Connection = #connection_type;
 
                 fn insert(self, con: &mut Self::Connection) -> Self::Model {
                     use diesel::prelude::*;
                     #insert_code
                 }
+            }
+            .into()
+        }
+
+        #[allow(unused_assignments, unused_mut)]
+        let mut async_impl: Option<TokenStream> = None;
+        #[cfg(feature = "async")]
+        {
+            let insert_code = self.gen_insert_code(&self.table, true);
+
+            async_impl = quote! {
+                type AsyncConnection = #async_connection_type;
+
+                fn async_insert(self, con: &mut Self::AsyncConnection) -> impl std::future::Future<Output = Self::Model> + Send {
+                    async move {
+                        use diesel::prelude:*;
+                        #insert_code
+                    }
+                }
+            }
+            .into();
+        }
+
+        quote! {
+            impl <#lifetime> diesel_factories::Factory for #factory <#lifetime> {
+                type Model = #model_type;
+                type Id = #id_type;
+
+                #sync_impl
+
+                #async_impl
 
                 #id_for_model_method
+            }
+        }
+    }
+
+    fn gen_insert_code(&self, table_path: &Path, use_async: bool) -> TokenStream {
+        let ident_type: Ident = syn::parse_str("r#type").unwrap();
+        let ident_type_: Ident = syn::parse_str("type_").unwrap();
+
+        let run_query_dsl_type: Type = if use_async {
+            syn::parse_str("diesel_async::RunQueryDsl").unwrap()
+        } else {
+            syn::parse_str("diesel::RunQueryDsl").unwrap()
+        };
+        let option_await: TokenStream = if use_async {
+            quote! { .await }
+        } else {
+            quote! {}
+        };
+        let insert_returning_fn: Ident = if use_async {
+            syn::parse_str("async_insert_returning_id").unwrap()
+        } else {
+            syn::parse_str("insert_returning_id").unwrap()
+        };
+
+        if self.no_fields() {
+            quote! {
+                #run_query_dsl_type::get_result::<Self::Model>(
+                    diesel::insert_into(#table_path::table).default_values(),
+                    con
+                )#option_await.expect("Insert of factory failed")
+            }
+        } else {
+            let values = self.fields.iter().map(|(name, _)| {
+                let field_name = if name == &ident_type {
+                    &ident_type_
+                } else {
+                    name
+                };
+                quote! { #table_path::#field_name.eq(&self.#name) }
+            });
+            let values = values.chain(self.associations.iter().map(
+                |(name, association_type, foreign_key_field)| {
+                    if association_type.is_optional {
+                        quote! {
+                            {
+                                let value = match self.#name {
+                                    std::option::Option::Some(inner) => {
+                                        Some(inner.#insert_returning_fn(con)#option_await)
+                                    }
+                                    std::option::Option::None => None,
+                                };
+                                #table_path::#foreign_key_field.eq(value)
+                            }
+                        }
+                    } else {
+                        quote! {
+                            #table_path::#foreign_key_field.eq(
+                                self.#name.#insert_returning_fn(con)#option_await
+                            )
+                        }
+                    }
+                },
+            ));
+
+            quote! {
+                let values = ( #(#values),* );
+                #run_query_dsl_type::get_result::<Self::Model>(
+                    diesel::insert_into(#table_path::table).values(values),
+                    con
+                )#option_await.expect("Insert of factory failed")
             }
         }
     }
