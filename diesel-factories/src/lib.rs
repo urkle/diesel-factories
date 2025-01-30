@@ -255,7 +255,7 @@
 //!
 //! ```
 //! # #![allow(unused_imports)]
-//! # include!("../tests/docs_setup.rs");
+//! # include!("../tests/docs_include/setup.rs");
 //! #
 //! #[derive(Clone, Factory)]
 //! #[factory(
@@ -280,7 +280,7 @@
 //!
 //! ```
 //! # #![allow(unused_imports)]
-//! # include!("../tests/docs_setup.rs");
+//! # include!("../tests/docs_include/setup.rs");
 //! #
 //! # #[derive(Clone, Factory)]
 //! # #[factory(
@@ -310,7 +310,7 @@
 //!
 //! ```
 //! # #![allow(unused_imports)]
-//! # include!("../tests/docs_setup.rs");
+//! # include!("../tests/docs_include/setup.rs");
 //! #
 //! # #[derive(Clone, Factory)]
 //! # #[factory(
@@ -344,7 +344,7 @@
 //!
 //! ```
 //! # #![allow(unused_imports)]
-//! # include!("../tests/docs_setup_with_city_factory.rs");
+//! # include!("../tests/docs_include/setup_with_city_factory.rs");
 //! #
 //! #[derive(Clone, Factory)]
 //! #[factory(
@@ -392,7 +392,7 @@
 //!
 //! ```
 //! # #![allow(unused_imports)]
-//! # include!("../tests/docs_setup.rs");
+//! # include!("../tests/docs_include/setup.rs");
 //! #
 //! #[derive(Clone, Factory)]
 //! #[factory(

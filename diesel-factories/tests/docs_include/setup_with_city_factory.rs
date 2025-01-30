@@ -67,33 +67,6 @@ struct VisitedCity {
     pub city_id: i32,
 }
 
-
-// #[derive(Clone, Factory)]
-// #[factory(
-// model = User,
-// table = crate::schema::users,
-// connection = diesel::pg::PgConnection
-// )]
-// struct UserFactory<'a> {
-//     pub name: &'a str,
-//     pub age: i32,
-//     pub country: std::option::Option<diesel_factories::Association<'a, Country, CountryFactory>>,
-//     pub home_city: Option<diesel_factories::Association<'a, City, CityFactory<'a>>>,
-//     pub current_city: Option<Association<'a, City, CityFactory<'a>>>,
-// }
-//
-// impl<'a> Default for UserFactory<'a> {
-//     fn default() -> Self {
-//         Self {
-//             name: "Bob",
-//             age: 30,
-//             country: None,
-//             home_city: None,
-//             current_city: None,
-//         }
-//     }
-// }
-
 #[derive(Clone, Factory)]
 #[factory(model = Country, table = crate::schema::countries)]
 struct CountryFactory {
