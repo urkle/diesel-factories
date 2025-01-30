@@ -428,14 +428,14 @@ impl AssociationType {
         };
 
         let arguments = match arguments {
-            syn::PathArguments::AngleBracketed(args) => args,
-            syn::PathArguments::Parenthesized(inner) => {
+            PathArguments::AngleBracketed(args) => args,
+            PathArguments::Parenthesized(inner) => {
                 return Err(syn::Error::new(
                     inner.span(),
                     "Unexpected parenthesized type arguments. Expected angle bracketed arguments like `<...>`",
                 ));
             }
-            syn::PathArguments::None => {
+            PathArguments::None => {
                 return Err(syn::Error::new(
                     whole_span,
                     "Missing association type arguments",
@@ -452,7 +452,7 @@ impl AssociationType {
 
         let lifetime = match args_iter.next() {
             Some(inner) => match inner {
-                syn::GenericArgument::Lifetime(lt) => lt,
+                GenericArgument::Lifetime(lt) => lt,
                 _ => {
                     return Err(syn::Error::new(
                         args_span,
@@ -467,7 +467,7 @@ impl AssociationType {
 
         let model_type = match args_iter.next() {
             Some(inner) => match inner {
-                syn::GenericArgument::Type(ty) => ty,
+                GenericArgument::Type(ty) => ty,
                 _ => {
                     return Err(syn::Error::new(args_span, "Expected generic type argument"));
                 }
@@ -479,7 +479,7 @@ impl AssociationType {
 
         let factory_type = match args_iter.next() {
             Some(inner) => match inner {
-                syn::GenericArgument::Type(ty) => ty,
+                GenericArgument::Type(ty) => ty,
                 _ => {
                     return Err(syn::Error::new(args_span, "Expected generic type argument"));
                 }
