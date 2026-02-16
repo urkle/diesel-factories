@@ -31,7 +31,7 @@ diesel-async = { version = "0.7", optional = true }
 diesel-factories-code-gen = { version = "2.0.0", path = "../diesel-factories-code-gen" }
 
 [dev-dependencies]
-diesel = { version = "2.3.0", features = ["postgres", "network-address"] }
-diesel-async = { version = "0.7", features = ["postgres"] }
+diesel = { version = "2.0", features = ["postgres", "network-address"] }
+diesel-async = { version = ">= 0.5", features = ["postgres"] }
 tokio = { version = "1", features = ["macros"] }
 trybuild = "1.0.3"
